@@ -278,6 +278,12 @@ class Forward_Diffusion(BaseModule):
             terms[i] = term.clone()
             resulted_Xn[i] = resulted_Xn[i] + [term*resulted_Xn[i][num-1]]
             Xn[i] = resulted_Xn[i][num]
+            '''
+            eps = mvn.sample((X_shape[1],)).T.cuda()
+            term[i] = torch.exp(self.std[num-1])@eps   + torch.exp(self.mean[num-1]).T.unsqueeze(1)
+            resulted_Xn[i] = resulted_Xn[i] + [terms[i]*resulted_Xn[i][num-1]]
+            Xn[i] = resulted_Xn[i][num]
+        '''      
         return Xn* mask, terms
 
 
