@@ -259,6 +259,8 @@ class Forward_Diffusion(BaseModule):
         
         self.mean_init = torch.zeros(80)
         self.cov_init = torch.eye(80)
+        
+        '''
     def forward(self, X0, mask, mu, n):
         Xn = X0.clone()  # X_{n}
         X_shape = X0[0].shape
@@ -266,6 +268,7 @@ class Forward_Diffusion(BaseModule):
         mvn = MultivariateNormal(self.mean_init, self.cov_init)
         resulted_Xn = [[] for _ in range(n.shape[0]) ]
 
+        
         for i, num in enumerate(n):
             resulted_Xn[i].append(Xn[i].clone())
             for j in range(num - 1):
@@ -278,14 +281,38 @@ class Forward_Diffusion(BaseModule):
             terms[i] = term.clone()
             resulted_Xn[i] = resulted_Xn[i] + [term*resulted_Xn[i][num-1]]
             Xn[i] = resulted_Xn[i][num]
+        return Xn* mask, terms
             
             '''
+            '''#after replace the above with the following code, in place operation error occurs
             eps = mvn.sample((X_shape[1],)).T.cuda()
             term[i] = torch.exp(self.std[num-1])@eps   + torch.exp(self.mean[num-1]).T.unsqueeze(1)
             resulted_Xn[i] = resulted_Xn[i] + [terms[i]*resulted_Xn[i][num-1]]
             Xn[i] = resulted_Xn[i][num]
-            '''      
         return Xn* mask, terms
+            '''
+    
+        def forward(self, X0, mask, mu, n):
+            Xn = X0.clone()  # X_{n}
+            X_shape = X0[0].shape
+            terms = torch.ones(X0.shape).cuda()  # Creating the terms tensor on GPU
+            mvn = MultivariateNormal(self.mean_init, self.cov_init)
+            resulted_Xn = [[] for _ in range(n.shape[0]) ]
+
+            for i, num in enumerate(n):
+                resulted_Xn[i].append(Xn[i].clone())
+                for j in range(num - 1):
+                    eps = mvn.sample((X_shape[1],)).cuda()
+                    noise = (eps @ torch.exp(self.std[j]) ).T  + torch.exp(self.mean[j]).unsqueeze(1)
+                    resulted_Xn[i] = resulted_Xn[i] + [noise * resulted_Xn[i][j]]
+                eps = mvn.sample((X_shape[1],)).T.cuda()
+                term = torch.exp(self.std[num-1])@eps   + torch.exp(self.mean[num-1]).unsqueeze(1)
+                terms[i] = term.clone()
+                resulted_Xn[i] = resulted_Xn[i] + [term*resulted_Xn[i][num-1]]
+                Xn[i] = resulted_Xn[i][num]
+            return Xn* mask, terms.detach()
+
+    
 
 
 class Diffusion(BaseModule):
@@ -345,7 +372,6 @@ class Diffusion(BaseModule):
         X0 = cutout_along_dimension(X0, l=self.l, cutout_percentage=self.p)
         #Xn, Masks = self.forward_diffusion(X0, mask, mu, n)
         Xn, Masks = self.forward_pass(X0, mask, mu, n)
-        Xn = Xn.float()
         n = (n/self.n_timesteps).float()
         dropout = torch.nn.Dropout(p=dropout_rate)
         mu_dropout = dropout(mu)
